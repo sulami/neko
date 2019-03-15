@@ -5,6 +5,7 @@
 
 ; Global state atom, because that's a good idea.
 (def global-state (atom {:insert-mode false
+                         :cursor [0 0]
                          :text ""}))
 
 (defn redraw
@@ -12,10 +13,15 @@
   [key a old-state new-state]
   (let [t (:terminal new-state)]
     (term/clear t)
-    (let [lines (str/split-lines (:text new-state))]
+    (let [lines (->> new-state
+                     :text
+                     str/split-lines
+                     (take 24))]
       (dorun (map-indexed #(term/put-string t %2 0 %1) lines)))
     (when (:insert-mode new-state)
-      (term/put-string t "--INSERT--" 0 24))))
+      (term/put-string t "--INSERT--" 0 24))
+    (let [[x y] (:cursor new-state)]
+      (term/move-cursor t x y))))
 
 (add-watch global-state :redraw-watcher redraw)
 
@@ -31,9 +37,18 @@
   "Processes text input so we end up with the right formats."
   [k]
   (case k
-    :enter (swap! global-state update-in [:text] #(str % "\n"))
-    :backspace (swap! global-state update-in [:text] #(apply str (drop-last %)))
-    (swap! global-state update-in [:text] #(str % k))))
+    :enter (do (swap! global-state update-in [:text] #(str % "\n"))
+               (swap! global-state update-in [:cursor 1] inc)
+               (swap! global-state assoc-in [:cursor 0] 0))
+    :backspace (do (swap! global-state update-in [:text] #(apply str (drop-last %)))
+                   (swap! global-state update-in [:cursor]
+                          #(let [[x y] %]
+                             (cond
+                               (= x y 0) [x y]
+                               (= x 0) [x (dec y)] ;; FIXME find end of previous line
+                               :else [(dec x) y]))))
+    (do (swap! global-state update-in [:text] #(str % k))
+        (swap! global-state update-in [:cursor 0] inc))))
 
 (defn insert-mode-input
   "Performs actions for insert-mode."
