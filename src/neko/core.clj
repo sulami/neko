@@ -4,9 +4,25 @@
             [clojure.string :as str]))
 
 ; Global state atom, because that's a good idea.
-(def global-state (atom {:insert-mode false
+(def global-state (atom {:active-mode :normal
                          :cursor [0 0]
                          :text ""}))
+
+(defn switch-mode
+  [mode]
+  (swap! global-state assoc-in [:active-mode] mode))
+
+(def config
+  (atom {:modes {:normal
+                 {:default-to-write false
+                  :keymap
+                  {\i #(switch-mode :insert)
+                   \q #(System/exit 0)}}
+
+                 :insert
+                 {:default-to-write true
+                  :keymap
+                  {:escape #(switch-mode :normal)}}}}))
 
 (defn redraw
   "Redraws the screen on every change to the global state."
@@ -18,20 +34,11 @@
                      str/split-lines
                      (take 24))]
       (dorun (map-indexed #(term/put-string t %2 0 %1) lines)))
-    (when (:insert-mode new-state)
-      (term/put-string t "--INSERT--" 0 24))
+    (term/put-string t (str (:active-mode new-state)) 0 24)
     (let [[x y] (:cursor new-state)]
       (term/move-cursor t x y))))
 
 (add-watch global-state :redraw-watcher redraw)
-
-(defn normal-mode-input
-  "Performs actions for normal-mode."
-  [k]
-  (case k
-    \i (swap! global-state assoc-in [:insert-mode] true)
-    \q (System/exit 0)
-    nil))
 
 (defn process-input
   "Processes text input so we end up with the right formats."
@@ -50,23 +57,22 @@
     (do (swap! global-state update-in [:text] #(str % k))
         (swap! global-state update-in [:cursor 0] inc))))
 
-(defn insert-mode-input
-  "Performs actions for insert-mode."
-  [k]
-  (case k
-    :escape (swap! global-state assoc-in [:insert-mode] false)
-    (process-input k)))
+(defn handle-input
+  [mode k]
+  (let [keymap (:keymap mode)]
+    (cond
+      (contains? keymap k) ((get keymap k))
+      (:default-to-write mode) (process-input k)
+      :else nil)))
 
 (defn input-loop
   "Main input loop."
   [t]
   (loop []
-      (let [k (term/get-key-blocking t)]
-        (prn k)
-        (if (:insert-mode @global-state)
-          (insert-mode-input k)
-          (normal-mode-input k))
-        (recur))))
+    (let [k (term/get-key-blocking t)
+          mode ((:active-mode @global-state) (:modes @config))]
+      (handle-input mode k)
+      (recur))))
 
 (defn -main
   "Let's get this kitty started."
