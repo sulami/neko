@@ -1,6 +1,7 @@
 (ns neko.core
   (:gen-class)
-  (:require [lanterna.terminal :as term]
+  (:require [neko.term :as term]
+            [lanterna.terminal :as lterm]
             [clojure.string :as str]))
 
 ; Global state atom, because that's a good idea.
@@ -34,15 +35,14 @@
   "Redraws the screen on every change to the global state."
   [key a old-state new-state]
   (let [t (:terminal new-state)]
-    (term/clear t)
+    (.erase t)
     (let [lines (->> new-state
                      :text
                      str/split-lines
                      (take 24))]
-      (dorun (map-indexed #(term/put-string t %2 0 %1) lines)))
-    (term/put-string t (str (:active-mode new-state)) 0 24)
-    (let [[x y] (:cursor new-state)]
-      (term/move-cursor t x y))))
+      (dorun (map-indexed #(.draw t [%1 0] %2) lines)))
+    (.draw t [0 24] (str (:active-mode new-state)))
+    (.move-cursor t (:cursor new-state))))
 
 (add-watch global-state :redraw-watcher redraw)
 
@@ -75,7 +75,7 @@
   "Main input loop."
   [t]
   (loop []
-    (let [k (term/get-key-blocking t)
+    (let [k (lterm/get-key-blocking t)
           mode ((:active-mode @global-state) (:modes @config))]
       (handle-input mode k)
       (recur))))
@@ -83,18 +83,10 @@
 (defn -main
   "Let's get this kitty started."
   [& args]
-  (let [t (term/get-terminal :swing)] ;; also: text
+
+  (let [t (.open (term/->Terminal))] ;; also: text
     (swap! global-state assoc-in [:terminal] t)
-    (term/start t)
-    (input-loop t)))
-
-
-;; exploration
-(def buffer {:content (list
-                       "line one"
-                       "line two"
-                       "line three")
-             :file nil})
+    (input-loop (:terminal t))))
 
 ;; Formatters as actions
 ;; we fork the buffer content for each formatter to work on (eventually off-process)
