@@ -22,3 +22,8 @@
                    ::position
                    ::formatters
                    ::cursor]))
+
+;; TODO windows format in frame
+
+(s/def ::frame
+  (s/keys :req-un [::windows]))

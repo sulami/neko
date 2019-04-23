@@ -1,6 +1,5 @@
 (ns neko.window
-  (:require [neko.spec :as spec]
-            [neko.util :as util]))
+  (:require [neko.util :as util]))
 
 #_(def window {:buffer buffer
              :position 1
