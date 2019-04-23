@@ -96,38 +96,6 @@
                        "line three")
              :file nil})
 
-(def window {:buffer buffer
-             :position 1
-             :formatters (list
-                          #(map clojure.string/capitalize %))
-             :cursor [0 0]})
-
-(defn content->markup [content]
-  ;; TODO define a flexible markup format which formatters can work on
-  content)
-
-(defn apply-formatters [window]
-  (let [formatters (:formatters window)]
-    (update-in window
-               [:buffer :content]
-               (fn [x] (reduce #(%2 %1) x formatters)))))
-
-(defn trim-window-content [window]
-  (let [pos (:position window)]
-    (update-in window [:buffer :content] #(drop pos %))))
-
-;; Idea
-;; Have standardised classes of tokens
-;; Tag things with their "class" of colour
-;; Have the frontend use colourschemes
-;; Have a standardised format for schemes
-
-(-> window
-    (update-in [:buffer :content] content->markup)
-    int
-    apply-formatters
-    trim-window-content) ; then pass to interface
-
 ;; Formatters as actions
 ;; we fork the buffer content for each formatter to work on (eventually off-process)
 ;; then merge them into one
@@ -137,18 +105,24 @@
 ;; actions are limited so that conflicts are avoided. so no "rewrite this line"
 ;; intermediate format is still tbd
 ;; TODO: figure out how to prevent conflicts, eg. what happens if two insertions happen in the same place? which order will they be in?
+;; maybe just have various IDs on actions, so we can sort them later?
+;; possible actions: insert
 
 (defn run-formatters [base formatters]
   (let [actions (map #(% base) formatters)]
     (apply concat actions)))
 
 (defn insert-header-formatter [content]
-  (list {:action :insert
+  (list {:origin :insert-header
+         :sequence-number 1
+         :action :insert
          :position 0
          :content ["# header"]}))
 
 (defn insert-footer-formatter [content]
-  (list {:action :insert
+  (list {:origin :insert-footer
+         :sequence-number 1
+         :action :insert
          :position (count content)
          :content ["-- footer"]}))
 
@@ -163,4 +137,16 @@
 (let [base ["abc"]]
   (->> (run-formatters base [insert-header-formatter
                              insert-footer-formatter])
-       (map (partial apply-action base))))
+       (sort-by (juxt :origin :sequence-number))
+       #_(map (partial apply-action base))))
+
+
+;; Commands
+;; Everything you can do is going to be a command of sorts
+;; Commands are just functions, really
+;; They might have a special form, like in emacs, so we can pass in special state and stuff
+;; Commands should be able to trigger a lightweight state, so that command chains are possible, vim-style
+;; They should also be inspectable in a tree-form, for documentation
+;; this might be implemented in the form of keymaps, just like in emacs
+;; there should be a standard way of prompting for options, to eliminate duplicate functions
+;; so a function for changing a buffer in a window could take either a buffer directly, or instructions for how to prompt for one
